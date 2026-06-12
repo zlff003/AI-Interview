@@ -155,7 +155,7 @@ public class EvaluateStreamConsumer extends AbstractStreamConsumer<EvaluateStrea
             redisService().streamAdd(
                 AsyncTaskStreamConstants.INTERVIEW_EVALUATE_STREAM_KEY,
                 message,
-                AsyncTaskStreamConstants.STREAM_MAX_LEN
+                0
             );
             log.info("评估任务已重新入队: sessionId={}, retryCount={}", sessionId, retryCount);
 

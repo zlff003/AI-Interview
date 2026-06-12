@@ -108,7 +108,7 @@ public class VoiceEvaluateStreamConsumer extends AbstractStreamConsumer<VoiceEva
             redisService().streamAdd(
                 AsyncTaskStreamConstants.VOICE_EVALUATE_STREAM_KEY,
                 message,
-                AsyncTaskStreamConstants.STREAM_MAX_LEN
+                0
             );
             log.info("语音面试评估任务已重新入队: sessionId={}, retryCount={}", sessionId, retryCount);
         } catch (Exception e) {

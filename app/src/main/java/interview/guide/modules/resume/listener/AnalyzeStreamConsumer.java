@@ -128,7 +128,7 @@ public class AnalyzeStreamConsumer extends AbstractStreamConsumer<AnalyzeStreamC
             redisService().streamAdd(
                 AsyncTaskStreamConstants.RESUME_ANALYZE_STREAM_KEY,
                 message,
-                AsyncTaskStreamConstants.STREAM_MAX_LEN
+                0
             );
             log.info("简历分析任务已重新入队: resumeId={}, retryCount={}", resumeId, retryCount);
 

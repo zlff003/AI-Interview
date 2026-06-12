@@ -1,6 +1,5 @@
 package interview.guide.common.async;
 
-import interview.guide.common.constant.AsyncTaskStreamConstants;
 import interview.guide.infrastructure.redis.RedisService;
 import lombok.extern.slf4j.Slf4j;
 
@@ -21,10 +20,11 @@ public abstract class AbstractStreamProducer<T> {
 
     protected void sendTask(T payload) {
         try {
+            // 不再在写入时裁剪，改由消费者端安全裁剪任务统一处理，避免误删 PEL 中未处理的消息
             String messageId = redisService.streamAdd(
                 streamKey(),
                 buildMessage(payload),
-                AsyncTaskStreamConstants.STREAM_MAX_LEN
+                0
             );
             log.info("{}任务已发送到Stream: {}, messageId={}",
                 taskDisplayName(), payloadIdentifier(payload), messageId);

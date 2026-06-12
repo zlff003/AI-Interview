@@ -110,7 +110,7 @@ public class VectorizeStreamConsumer extends AbstractStreamConsumer<VectorizeStr
             redisService().streamAdd(
                 AsyncTaskStreamConstants.KB_VECTORIZE_STREAM_KEY,
                 message,
-                AsyncTaskStreamConstants.STREAM_MAX_LEN
+                0
             );
             log.info("向量化任务已重新入队: kbId={}, retryCount={}", kbId, retryCount);
 

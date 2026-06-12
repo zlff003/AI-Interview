@@ -40,9 +40,89 @@ public final class AsyncTaskStreamConstants {
     public static final long POLL_INTERVAL_MS = 1000;
 
     /**
-     * Stream 最大长度（自动裁剪旧消息，防止无限增长）
+     * Stream 目标最大长度。
+     * 不再在每次写入时裁剪（避免误删 PEL 中未处理的消息），
+     * 改由定时安全裁剪任务根据 PEL 情况决定裁剪边界。
      */
     public static final int STREAM_MAX_LEN = 1000;
+
+    // ========== Stream 安全裁剪配置 ==========
+
+    /**
+     * 安全裁剪间隔（毫秒）
+     */
+    public static final long STREAM_TRIM_INTERVAL_MS = 60_000;
+
+    /**
+     * 裁剪触发阈值因子：Stream 长度超过 MAX_LEN * factor 时触发裁剪
+     */
+    public static final double STREAM_TRIM_THRESHOLD_FACTOR = 1.5;
+
+    // ========== PEL 监控配置 ==========
+
+    /**
+     * PEL 积压监控间隔（毫秒）
+     */
+    public static final long PEL_MONITOR_INTERVAL_MS = 60_000;
+
+    /**
+     * PEL 积压告警比率：Pending 数量超过 Stream 长度的此比例时 WARN
+     */
+    public static final double PEL_BACKLOG_WARN_RATIO = 0.3;
+
+    /**
+     * PEL 消息严重卡死阈值（毫秒）：最老消息闲置超过此时间触发 CRITICAL 告警
+     */
+    public static final long PEL_STUCK_CRITICAL_MS = 600_000;
+
+    /**
+     * 消费者工作线程池大小
+     */
+    public static final int CONSUMER_POOL_SIZE = 4;
+
+    // ========== 死信队列(DLQ)配置 ==========
+
+    /**
+     * 死信队列 Stream Key 后缀
+     */
+    public static final String DLQ_STREAM_SUFFIX = ":dlq";
+
+    /**
+     * DLQ 消息字段：原始 Stream Key
+     */
+    public static final String DLQ_FIELD_ORIGINAL_STREAM = "_original_stream";
+
+    /**
+     * DLQ 消息字段：失败原因
+     */
+    public static final String DLQ_FIELD_ERROR = "_error";
+
+    /**
+     * DLQ 消息字段：终态重试次数
+     */
+    public static final String DLQ_FIELD_RETRY_COUNT = "_retry_count";
+
+    /**
+     * DLQ 消息字段：失败时间
+     */
+    public static final String DLQ_FIELD_FAILED_AT = "_failed_at";
+
+    // ========== PEL 回收配置 ==========
+
+    /**
+     * PEL 回收扫描间隔（毫秒）
+     */
+    public static final long PEL_RECOVERY_INTERVAL_MS = 30_000;
+
+    /**
+     * PEL 消息空闲超过此时间将被回收（毫秒，默认5分钟）
+     */
+    public static final long PEL_CLAIM_IDLE_TIMEOUT_MS = 300_000;
+
+    /**
+     * PEL 回收时每次最多认领的消息数
+     */
+    public static final int PEL_CLAIM_BATCH_SIZE = 50;
 
     // ========== 知识库向量化 Stream 配置 ==========
 

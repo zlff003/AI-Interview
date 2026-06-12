@@ -13,16 +13,24 @@ import org.redisson.api.RMap;
 import org.redisson.api.RStream;
 import org.redisson.api.RedissonClient;
 import org.redisson.api.options.KeysScanOptions;
+import org.redisson.api.stream.PendingEntry;
+import org.redisson.api.stream.PendingResult;
+import org.redisson.api.stream.PendingResult;
 import org.redisson.api.stream.StreamAddArgs;
 import org.redisson.api.stream.StreamCreateGroupArgs;
 import org.redisson.api.stream.StreamMessageId;
+import org.redisson.api.stream.StreamPendingRangeArgs;
+import org.redisson.api.stream.StreamRangeArgs;
+import org.redisson.api.stream.StreamReadArgs;
 import org.redisson.api.stream.StreamReadGroupArgs;
+import org.redisson.api.stream.StreamTrimArgs;
 import org.redisson.client.codec.StringCodec;
 import org.springframework.stereotype.Service;
 
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 
@@ -334,6 +342,169 @@ public class RedisService {
     public long streamLen(String streamKey) {
         RStream<String, String> stream = redissonClient.getStream(streamKey, StringCodec.INSTANCE);
         return stream.size();
+    }
+
+    /**
+     * 查询消费者组中的 Pending 消息列表（用于 PEL 回收）
+     *
+     * @param streamKey Stream 键
+     * @param groupName 消费者组名
+     * @param count     最多返回条数
+     * @return Pending 消息列表
+     */
+    public List<PendingEntry> streamListPending(
+            String streamKey, String groupName, int count) {
+        RStream<String, String> stream = redissonClient.getStream(streamKey, StringCodec.INSTANCE);
+        return stream.listPending(
+            StreamPendingRangeArgs.groupName(groupName)
+                .startId(StreamMessageId.MIN)
+                .endId(StreamMessageId.MAX)
+                .count(count)
+        );
+    }
+
+    /**
+     * 认领闲置的 Pending 消息（XCLAIM）
+     *
+     * @param streamKey     Stream 键
+     * @param groupName     消费者组名
+     * @param consumerName  目标消费者名
+     * @param minIdleTimeMs 最小闲置时间（毫秒）
+     * @param ids           要认领的消息ID列表
+     * @return 认领成功后的消息数据（消息ID → 字段数据）
+     */
+    public Map<StreamMessageId, Map<String, String>> streamClaimMessages(
+            String streamKey, String groupName, String consumerName,
+            long minIdleTimeMs, StreamMessageId... ids) {
+        RStream<String, String> stream = redissonClient.getStream(streamKey, StringCodec.INSTANCE);
+        return stream.claim(
+            groupName,
+            consumerName,
+            minIdleTimeMs,
+            TimeUnit.MILLISECONDS,
+            ids
+        );
+    }
+
+    /**
+     * 按范围读取 Stream 消息（用于 DLQ 浏览，无需消费者组）
+     *
+     * @param streamKey Stream 键
+     * @param start     起始消息ID
+     * @param end       结束消息ID
+     * @param count     最多返回条数
+     * @return 消息数据（消息ID → 字段数据）
+     */
+    public Map<StreamMessageId, Map<String, String>> streamReadRange(
+            String streamKey, StreamMessageId start, StreamMessageId end, int count) {
+        RStream<String, String> stream = redissonClient.getStream(streamKey, StringCodec.INSTANCE);
+        return stream.range(
+            StreamRangeArgs.startId(start)
+                .endId(end)
+                .count(count)
+        );
+    }
+
+    /**
+     * 从 Stream 开头读取消息（无消费者组模式，用于 DLQ 浏览）
+     *
+     * @param streamKey Stream 键
+     * @param count     最多返回条数
+     * @return 消息数据（消息ID → 字段数据）
+     */
+    public Map<StreamMessageId, Map<String, String>> streamReadFromStart(
+            String streamKey, int count) {
+        RStream<String, String> stream = redissonClient.getStream(streamKey, StringCodec.INSTANCE);
+        return stream.read(
+            StreamReadArgs.greaterThan(StreamMessageId.MIN)
+                .count(count)
+        );
+    }
+
+    /**
+     * 删除 Stream 中的消息（用于 DLQ 消息删除）
+     *
+     * @param streamKey Stream 键
+     * @param ids       要删除的消息ID
+     * @return 实际删除的消息数量
+     */
+    public long streamRemoveMessages(String streamKey, StreamMessageId... ids) {
+        RStream<String, String> stream = redissonClient.getStream(streamKey, StringCodec.INSTANCE);
+        return stream.remove(ids);
+    }
+
+    /**
+     * 获取 Pending 消息数量
+     *
+     * @param streamKey Stream 键
+     * @param groupName 消费者组名
+     * @return Pending 消息总数
+     */
+    public long streamPendingCount(String streamKey, String groupName) {
+        RStream<String, String> stream = redissonClient.getStream(streamKey, StringCodec.INSTANCE);
+        PendingResult result = stream.getPendingInfo(groupName);
+        return result.getTotal();
+    }
+
+    /**
+     * 获取 Pending 汇总信息（含总数、最小/最大ID、消费者分布）。
+     * 用于监控告警和安全裁剪。
+     *
+     * @param streamKey Stream 键
+     * @param groupName 消费者组名
+     * @return PendingResult，Stream 不存在时返回 null
+     */
+    public PendingResult streamGetPendingInfo(String streamKey, String groupName) {
+        RStream<String, String> stream = redissonClient.getStream(streamKey, StringCodec.INSTANCE);
+        try {
+            return stream.getPendingInfo(groupName);
+        } catch (Exception e) {
+            log.debug("获取 Pending 信息失败（消费者组可能不存在）: streamKey={}, groupName={}",
+                streamKey, groupName);
+            return null;
+        }
+    }
+
+    /**
+     * 获取消费者组中最旧的 Pending 消息 ID（用于确定安全裁剪边界）。
+     *
+     * @param streamKey Stream 键
+     * @param groupName 消费者组名
+     * @return 最旧的 Pending 消息 ID，无 Pending 消息时返回 null
+     */
+    public StreamMessageId streamGetMinPendingId(String streamKey, String groupName) {
+        List<PendingEntry> entries = streamListPending(streamKey, groupName, 1);
+        if (entries == null || entries.isEmpty()) {
+            return null;
+        }
+        return entries.get(0).getId();
+    }
+
+    /**
+     * 按消息 ID 裁剪 Stream（XTRIM MINID）。
+     * 删除所有 ID 小于指定值的消息，保留 minId 及之后的消息。
+     * 使用近似裁剪（~），性能更好。
+     *
+     * @param streamKey Stream 键
+     * @param minId     保留的最小消息 ID
+     * @return 实际裁剪的消息数量
+     */
+    public long streamTrimByMinId(String streamKey, StreamMessageId minId) {
+        RStream<String, String> stream = redissonClient.getStream(streamKey, StringCodec.INSTANCE);
+        return stream.trim(StreamTrimArgs.minId(minId).noLimit());
+    }
+
+    /**
+     * 按长度裁剪 Stream（XTRIM MAXLEN）。
+     * 仅在没有 Pending 消息时使用，作为安全裁剪的降级方案。
+     *
+     * @param streamKey Stream 键
+     * @param maxLen    保留的最大消息数
+     * @return 实际裁剪的消息数量
+     */
+    public long streamTrimByMaxLen(String streamKey, int maxLen) {
+        RStream<String, String> stream = redissonClient.getStream(streamKey, StringCodec.INSTANCE);
+        return stream.trim(StreamTrimArgs.maxLen(maxLen).noLimit());
     }
 
     // ==================== 原子计数器 ====================
